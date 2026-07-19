@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0E141C">
+<title>CubEd Cardboard — Projectbeheersingskubus</title>
+<style>
+  html,body{margin:0;height:100%;background:#0E141C;overflow:hidden;overscroll-behavior:none;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#F8F6F3;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  canvas{display:block;touch-action:none}
+  #start{position:fixed;inset:0;z-index:10;background:#0E141C;display:flex;align-items:center;justify-content:center;
+    padding:26px;text-align:center}
+  #start .kaart{max-width:460px}
+  #start h1{font-family:Georgia,serif;font-weight:normal;font-size:34px;margin:0}
+  #start .sub{font-size:11px;letter-spacing:2.6px;text-transform:uppercase;color:#F2C97D;margin:6px 0 20px}
+  #start p{font-size:14.5px;line-height:1.6;color:rgba(248,246,243,.85);margin:0 0 14px;text-align:left}
+  #start b{font-weight:normal;color:#F2C97D}
+  #start ol{text-align:left;font-size:14.5px;line-height:1.7;color:rgba(248,246,243,.85);padding-left:20px;margin:0 0 22px}
+  #knop{background:#5C0A0A;color:#F8F6F3;border:1px solid #E9A93C;padding:16px 34px;font-size:15px;
+    letter-spacing:2.4px;text-transform:uppercase;cursor:pointer;font-family:inherit;border-radius:2px}
+  #knop:active{background:#7E1616}
+  #melding{position:fixed;left:0;right:0;bottom:14px;text-align:center;font-size:12px;color:#8FA0B5;z-index:5;
+    pointer-events:none;letter-spacing:1.4px}
+  #naad{position:fixed;top:0;bottom:0;left:50%;width:1px;background:rgba(233,169,60,.25);z-index:4;pointer-events:none}
+  .verborgen{display:none !important}
+</style>
+</head>
+<body>
+
+<div id="start"><div class="kaart">
+  <h1>CubEd</h1>
+  <div class="sub">Cardboard-versie · N470 Delft–Zoetermeer</div>
+  <ol>
+    <li>Draai de telefoon in <b>liggende stand</b>.</li>
+    <li>Tik op <b>Start</b> en geef toegang tot de bewegingssensor.</li>
+    <li>Schuif de telefoon in de houder en zet de bril op.</li>
+  </ol>
+  <p><b>Bedienen doe je met je blik:</b> kijk naar een vlak van de kubus tot het ringetje vol is. Dat vlak klapt open
+     en je kijkt de kubus in. Onder de kubus zweven tegels om van vlak te wisselen, te centreren en te sluiten.</p>
+  <p>Zit de kubus scheef? Kijk recht vooruit en <b>tik op het scherm</b> (of gebruik de tegel Centreren).</p>
+  <button id="knop">Start</button>
+</div></div>
+
+<div id="naad" class="verborgen"></div>
+<div id="melding"></div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from "three";
+
+/* =========================================================
+   1. Projectmodel — gelijk aan de HTML-versie
+   ========================================================= */
+const P = {
+  maanden:["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"],
+  planning:[
+    {naam:"Voorbereiding & vergunningen", basis:[1,3], actueel:[1,3],  prognose:[1,3],  kritiek:false},
+    {naam:"Kabels en leidingen",          basis:[2,4], actueel:[2,5],  prognose:[2,5],  kritiek:true},
+    {naam:"Grondwerk oostzijde",          basis:[4,3], actueel:[4,3],  prognose:[4,3],  kritiek:false},
+    {naam:"Kunstwerk viaduct Delfgauw",   basis:[5,5], actueel:[6,5],  prognose:[6,5],  kritiek:true},
+    {naam:"Riolering en drainage",        basis:[6,3], actueel:[6,3],  prognose:[6,3],  kritiek:false},
+    {naam:"Asfaltering fase 1",           basis:[7,2], actueel:[7,2],  prognose:[7,2],  kritiek:false},
+    {naam:"Asfaltering fase 2",           basis:[9,2], actueel:[10,2], prognose:[10,2], kritiek:true},
+    {naam:"Markering en oplevering",      basis:[10,3],actueel:[11,2], prognose:[11,3], kritiek:true}
+  ],
+  kosten:{budget:2000000, opgenomen:853000, meerwerk:214000, prognose:2096000, soorten:[
+    {naam:"Directe bouwkosten", budget:1420000, opgenomen:640000, meerwerk:168000, prognose:1512000},
+    {naam:"Engineering & VTU",  budget:380000,  opgenomen:174000, meerwerk:46000,  prognose:404000},
+    {naam:"Risicoreservering",  budget:200000,  opgenomen:39000,  meerwerk:0,      prognose:180000}
+  ]},
+  capaciteit:{beschikbaar:12, bronnen:[
+    {naam:"Eigen personeel", kleur:"#6FA8D6", fte:[3,4,5,6,7,7,7,6,6,5,4,3]},
+    {naam:"Inhuur",          kleur:"#E9A93C", fte:[1,2,3,4,5,6,4,3,4,3,2,0]},
+    {naam:"Onderaanneming",  kleur:"#E2622C", fte:[0,0,0,1,2,2,2,1,2,1,0,0]}
+  ]},
+  risicos:[
+    {naam:"Levertijd staal viaduct",       kans:4, gevolg:4, geld:120000},
+    {naam:"Niet-gesprongen explosieven",   kans:2, gevolg:5, geld:95000},
+    {naam:"Vertraging kabels & leidingen", kans:5, gevolg:3, geld:78000},
+    {naam:"Stikstofuitspraak",             kans:2, gevolg:4, geld:60000},
+    {naam:"Weer bij asfalteren",           kans:3, gevolg:2, geld:32000},
+    {naam:"Verkeershinderclausule",        kans:2, gevolg:2, geld:18000}
+  ],
+  locatie:[
+    {naam:"N211", deel:"Wippolderlaan",      x:170, z:170, rest:15,  status:"gereed"},
+    {naam:"N223", deel:"Depotlocatie",       x:95,  z:265, rest:20,  status:"gereed"},
+    {naam:"N222", deel:"Veilingroute",       x:245, z:250, rest:45,  status:"normaal"},
+    {naam:"N213", deel:"Bouwweg",            x:145, z:390, rest:40,  status:"normaal"},
+    {naam:"N468", deel:"Omleidingsroute",    x:305, z:345, rest:55,  status:"normaal"},
+    {naam:"N470", deel:"Hoofdtracé",         x:450, z:440, rest:100, status:"vertraagd"},
+    {naam:"N471", deel:"Aansluiting zuid",   x:370, z:545, rest:60,  status:"normaal"},
+    {naam:"N209", deel:"Kruising Pijnacker", x:330, z:650, rest:50,  status:"normaal"},
+    {naam:"N206", deel:"Materieelaanvoer",   x:635, z:205, rest:30,  status:"normaal"}
+  ],
+  kwaliteit:{
+    bouwdelen:[{naam:"Onderbouw",goed:44,hersteld:8,open:5},
+               {naam:"Verharding",goed:38,hersteld:4,open:2},
+               {naam:"Inrichting",goed:24,hersteld:2,open:1}],
+    afwijkingen:[{code:"AF-014",tekst:"Verdichtingsgraad fundering km 4,2",ernst:"hoog"},
+                 {code:"AF-017",tekst:"Betondekking damwand noordzijde",ernst:"midden"},
+                 {code:"AF-021",tekst:"Revisietekening riool ontbreekt",ernst:"laag"}]
+  }
+};
+const KL={normaal:"#6FA8D6",vertraagd:"#E2622C",gereed:"#2E9E62",groen:"#2E9E62",geel:"#E8B937",
+  oranje:"#E2622C",blauw:"#6FA8D6",goud:"#E9A93C",grijsblauw:"#5A6C84",bordeaux:"#5C0A0A"};
+const euro=n=>"\u20AC "+n.toLocaleString("nl-NL");
+
+/* ontwerpmaat van elk vlak: 1024 × 1024 punten, in de kubus 1,2 m */
+const T=1024, KUB=1.20;
+const pu = v => v/T*KUB;                 // punten -> meters
+const px = v => (v/T-0.5)*KUB;           // horizontaal, midden = 0
+const py = v => (0.5-v/T)*KUB;           // verticaal, midden = 0
+const pz = v => -KUB/2 + v/T*KUB;        // diepte, 0 = achterwand
+
+/* =========================================================
+   2. Tekenen op canvas
+   ========================================================= */
+function doek(transparant=false, bg="#22303F"){
+  const c=document.createElement("canvas"); c.width=c.height=T;
+  const g=c.getContext("2d");
+  if(!transparant){ g.fillStyle=bg; g.fillRect(0,0,T,T); }
+  g.textBaseline="alphabetic";
+  return {c,g};
+}
+function tex(c){
+  const t=new THREE.CanvasTexture(c);
+  t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=8; t.needsUpdate=true; return t;
+}
+function txt(g,s,x,y,{size=22,kleur="#B7C2D2",font="system-ui, sans-serif",align="left",sp=0}={}){
+  g.save(); g.fillStyle=kleur; g.font=`${size}px ${font}`; g.textAlign=sp?"left":align;
+  if(sp){ // letterspatiëring
+    let w=0; for(const ch of s) w+=g.measureText(ch).width+sp;
+    let cx = align==="center"? x-w/2 : align==="right"? x-w : x;
+    for(const ch of s){ g.fillText(ch,cx,y); cx+=g.measureText(ch).width+sp; }
+  } else g.fillText(s,x,y);
+  g.restore();
+}
+function raster(g,kleur="rgba(233,169,60,.13)",n=12){
+  g.strokeStyle=kleur; g.lineWidth=1.5;
+  for(let i=0;i<=n;i++){const p=i*T/n;
+    g.beginPath();g.moveTo(p,0);g.lineTo(p,T);g.stroke();
+    g.beginPath();g.moveTo(0,p);g.lineTo(T,p);g.stroke();}
+}
+function band(g,naam,extra){
+  g.fillStyle="rgba(14,20,28,.78)"; g.fillRect(0,T-58,T,58);
+  txt(g,naam,30,T-20,{size:24,kleur:"#E9A93C",sp:5});
+  if(extra) txt(g,extra,T-30,T-20,{size:18,kleur:"#8FA0B5",align:"right"});
+}
+function balk(g,x,y,w,h,kleur){ g.fillStyle=kleur; g.fillRect(x,y,w,h); }
+
+/* ---- buitenzijde van de kubus ---- */
+function zijdeDoek(v){
+  const {c,g}=doek(false,"#1B2432");
+  const grd=g.createLinearGradient(0,0,T,T); grd.addColorStop(0,"#283445"); grd.addColorStop(1,"#151D28");
+  g.fillStyle=grd; g.fillRect(0,0,T,T);
+  raster(g,"rgba(120,145,180,.13)",12);
+  g.strokeStyle="rgba(233,169,60,.55)"; g.lineWidth=3; g.strokeRect(52,52,T-104,T-104);
+  /* hoekmarkeringen */
+  const mk=(x,y)=>{const s=54; g.fillStyle="#E9A93C"; g.fillRect(x,y,s,s);
+    g.fillStyle="#1B2432";
+    g.fillRect(x+s/3,y,s/3,s/3); g.fillRect(x,y+s/3,s/3,s/3);
+    g.fillRect(x+2*s/3,y+s/3,s/3,s/3); g.fillRect(x+s/3,y+2*s/3,s/3,s/3);};
+  mk(22,22); mk(T-76,22); mk(22,T-76); mk(T-76,T-76);
+  txt(g,v.label.toUpperCase(),T/2,110,{size:40,kleur:"#E9A93C",align:"center",sp:14});
+  txt(g,v.dataset.toUpperCase(),T/2,T-96,{size:24,kleur:"#8FA0B5",align:"center",sp:4});
+  txt(g,v.eenheid,T/2,T-62,{size:20,kleur:"#5C6B80",align:"center"});
+  ICOON[v.id](g);
+  return c;
+}
+const ICOON={
+  planning(g){const x=352,y=352,w=320;
+    g.fillStyle="#B9CBDE"; g.fillRect(x,y,w,260);
+    g.fillStyle="#3C6F9C"; g.fillRect(x,y,w,58);
+    g.fillStyle="#E2622C"; g.fillRect(x+40,y+96,64,50); g.fillRect(x+128,y+96,64,50);
+    g.fillStyle="#3C6F9C"; g.fillRect(x+216,y+96,64,50); g.fillRect(x+40,y+170,64,50);
+    g.strokeStyle="#F0F4F8"; g.lineWidth=8; g.strokeRect(x,y,w,260);
+    g.beginPath(); g.fillStyle="#8FB4D4"; g.arc(x+w,y+250,86,0,7); g.fill(); g.stroke();
+    g.strokeStyle="#1B2432"; g.lineWidth=10; g.beginPath();
+    g.moveTo(x+w,y+190); g.lineTo(x+w,y+250); g.lineTo(x+w+46,y+282); g.stroke();},
+  kosten(g){g.strokeStyle="#F0F4F8"; g.lineWidth=7;
+    for(let i=0;i<3;i++){const o=i*54;
+      g.beginPath(); g.fillStyle="#2E7D52";
+      g.moveTo(300,420+o); g.lineTo(660,330+o); g.lineTo(760,410+o); g.lineTo(400,500+o);
+      g.closePath(); g.fill(); g.stroke();}
+    txt(g,"\u20AC",520,470,{size:74,kleur:"#F0F4F8",align:"center",font:"Georgia, serif"});},
+  capaciteit(g){const p=(cx,cy,s)=>{g.fillStyle="#8FB4D4"; g.strokeStyle="#F0F4F8"; g.lineWidth=6;
+      g.beginPath(); g.arc(cx,cy,26*s,0,7); g.fill(); g.stroke();
+      g.beginPath(); g.moveTo(cx-34*s,cy+124*s); g.lineTo(cx-34*s,cy+52*s);
+      g.arc(cx,cy+52*s,34*s,Math.PI,0); g.lineTo(cx+34*s,cy+124*s); g.closePath(); g.fill(); g.stroke();};
+    [[380,360],[512,360],[644,360],[446,500],[578,500]].forEach(q=>p(q[0],q[1],.95));},
+  risicos(g){g.fillStyle="#26334A"; g.strokeStyle="#F0F4F8"; g.lineWidth=8;
+    g.beginPath(); g.roundRect(300,330,430,270,24); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(400,600); g.lineTo(400,690); g.lineTo(480,600); g.closePath(); g.fill();
+    g.fillStyle="#8C1D1D"; g.beginPath(); g.moveTo(512,380); g.lineTo(592,520); g.lineTo(432,520);
+    g.closePath(); g.fill(); g.stroke();
+    txt(g,"i",512,505,{size:52,kleur:"#F0F4F8",align:"center",font:"Georgia, serif"});},
+  locatie(g){g.fillStyle="#B9CBDE"; g.strokeStyle="#F0F4F8"; g.lineWidth=8;
+    g.beginPath(); g.moveTo(300,400); g.lineTo(420,360); g.lineTo(540,400); g.lineTo(660,360);
+    g.lineTo(660,600); g.lineTo(540,640); g.lineTo(420,600); g.lineTo(300,640); g.closePath();
+    g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(420,360); g.lineTo(420,600); g.moveTo(540,400); g.lineTo(540,640); g.stroke();
+    g.fillStyle="rgba(143,180,212,.85)"; g.beginPath(); g.arc(590,590,70,0,7); g.fill(); g.stroke();
+    g.lineWidth=18; g.beginPath(); g.moveTo(636,640); g.lineTo(700,704); g.stroke();},
+  kwaliteit(g){g.fillStyle="#26334A"; g.strokeStyle="#F0F4F8"; g.lineWidth=8;
+    g.beginPath(); g.moveTo(512,330); g.lineTo(680,398); g.lineTo(680,510);
+    g.quadraticCurveTo(680,650,512,712); g.quadraticCurveTo(344,650,344,510);
+    g.lineTo(344,398); g.closePath(); g.fill(); g.stroke();
+    g.strokeStyle="#2E9E62"; g.lineWidth=34; g.lineCap="round"; g.lineJoin="round";
+    g.beginPath(); g.moveTo(424,520); g.lineTo(486,584); g.lineTo(608,452); g.stroke(); g.lineCap="butt";}
+};
+
+/* =========================================================
+   3. De binnenkant per vlak
+   ========================================================= */
+/* --- planning --- */
+function planningLaag(veld,kleuren,labels){
+  const {c,g}=doek(true);
+  const x0=330,w=T-x0-50,y0=200,kh=(T-430)/8;
+  P.planning.forEach((a,i)=>{
+    const [st,du]=a[veld], y=y0+i*kh;
+    balk(g,x0+(st-1)*w/12,y,du*w/12-8,kh*.52,a.kritiek?kleuren[1]:kleuren[0]);
+    if(labels) txt(g,a.naam,x0-20,y+kh*.42,{size:22,align:"right",kleur:a.kritiek?"#F2C97D":"#B7C2D2"});
+  });
+  return c;
+}
+function planningVloer(){
+  const {c,g}=doek();
+  const x0=330,w=T-x0-50,peil=x0+6*w/12;
+  g.strokeStyle="rgba(233,169,60,.2)"; g.lineWidth=2;
+  P.maanden.forEach((m,i)=>{const x=x0+i*w/12;
+    g.beginPath(); g.moveTo(x,0); g.lineTo(x,T-80); g.stroke();
+    txt(g,m,x+w/24,T-150,{size:24,align:"center"});});
+  g.strokeStyle="#E2622C"; g.lineWidth=5; g.setLineDash([16,10]);
+  g.beginPath(); g.moveTo(peil,0); g.lineTo(peil,T-80); g.stroke(); g.setLineDash([]);
+  txt(g,"peildatum 30 juni",peil+16,90,{size:24,kleur:"#E2622C"});
+  band(g,"PLANNING \u00b7 JAAR 2026","basis \u2192 actueel \u2192 prognose");
+  return c;
+}
+/* --- kosten --- */
+function kostenLaag(s){
+  const {c,g}=doek(true);
+  const x0=380,w=T-x0-160,max=1600000,b=v=>v/max*w,y=T/2-60,h=120;
+  txt(g,s.naam,x0-24,y-36,{size:30,align:"right",kleur:"#F2C97D",font:"Georgia, serif"});
+  txt(g,"budget "+euro(s.budget),x0-24,y+6,{size:20,align:"right"});
+  g.strokeStyle="rgba(248,246,243,.5)"; g.lineWidth=3; g.setLineDash([10,8]);
+  g.strokeRect(x0,y,b(s.budget),h); g.setLineDash([]);
+  balk(g,x0,y,b(s.opgenomen-s.meerwerk),h,KL.groen);
+  balk(g,x0+b(s.opgenomen-s.meerwerk),y,b(s.meerwerk),h,KL.geel);
+  if(s.prognose>s.budget){
+    g.fillStyle="rgba(226,98,44,.4)"; g.fillRect(x0+b(s.budget),y,b(s.prognose-s.budget),h);
+    g.strokeStyle="#E2622C"; g.lineWidth=4; g.strokeRect(x0+b(s.budget),y,b(s.prognose-s.budget),h);}
+  txt(g,euro(s.opgenomen),x0+b(Math.max(s.prognose,s.budget))+22,y+h/2+10,
+    {size:26,kleur:"#F8F6F3",font:"Georgia, serif"});
+  return c;
+}
+function kostenVloer(){
+  const {c,g}=doek();
+  const k=P.kosten,x0=380,w=T-x0-160,max=1600000,b=v=>v/max*w,y=T*.34;
+  g.fillStyle="rgba(46,158,98,.3)"; g.fillRect(x0,y,w,90);
+  g.strokeStyle="rgba(233,169,60,.35)"; g.lineWidth=2; g.strokeRect(x0,y,w,90);
+  g.fillStyle="rgba(226,98,44,.25)"; g.fillRect(x0+b(k.budget),y-14,b(k.prognose-k.budget),118);
+  g.strokeStyle="#E2622C"; g.lineWidth=3; g.setLineDash([9,7]);
+  g.strokeRect(x0+b(k.budget),y-14,b(k.prognose-k.budget),118); g.setLineDash([]);
+  txt(g,"\u20AC 0",x0,y-30,{size:20});
+  txt(g,"budgetgrens \u20AC 2,0 mln",x0+b(k.budget),y-30,{size:20,kleur:"#F2C97D",align:"center"});
+  txt(g,"overschrijding \u20AC 96k",x0+b(k.prognose)+16,y+64,{size:20,kleur:"#E2622C"});
+  band(g,"KOSTEN \u00b7 OPNEMEN \u00d7 1.000","cumulatief per kostensoort");
+  return c;
+}
+/* --- capaciteit --- */
+function capLaag(bron){
+  const {c,g}=doek(true);
+  const x0=140,w=T-x0-60,y0=280,h=T-y0-260,max=9;
+  g.strokeStyle="rgba(233,169,60,.18)"; g.lineWidth=2;
+  for(let j=0;j<=3;j++){const y=y0+h-j*h/3;
+    g.beginPath(); g.moveTo(x0,y); g.lineTo(x0+w,y); g.stroke();
+    txt(g,String(j*3),x0-18,y+8,{size:20,align:"right"});}
+  bron.fte.forEach((v,i)=>{ if(v<=0)return;
+    const bh=v/max*h, bw=w/12*.5;
+    balk(g,x0+i*w/12+w/12*.25,y0+h-bh,bw,bh,bron.kleur);});
+  txt(g,bron.naam+" \u00b7 piek "+Math.max(...bron.fte)+" fte",x0,y0-36,
+    {size:30,kleur:"#F2C97D",font:"Georgia, serif"});
+  return c;
+}
+function capVloer(){
+  const {c,g}=doek();
+  const x0=140,w=T-x0-60;
+  const tot=P.maanden.map((m,i)=>P.capaciteit.bronnen.reduce((s,b)=>s+b.fte[i],0));
+  P.maanden.forEach((m,i)=>{
+    const x=x0+i*w/12, over=tot[i]>P.capaciteit.beschikbaar;
+    g.fillStyle=over?"rgba(226,98,44,.24)":"rgba(111,168,214,.07)";
+    g.fillRect(x+4,0,w/12-8,T-90);
+    txt(g,m,x+w/24,T-190,{size:24,align:"center",kleur:over?"#E2622C":"#B7C2D2"});
+    txt(g,tot[i]+" fte",x+w/24,T-150,{size:20,align:"center",kleur:"#8FA0B5"});});
+  band(g,"CAPACITEIT \u00b7 FTE PER MAAND","oranje = boven de vaste bezetting");
+  return c;
+}
+/* --- risico's --- */
+function risicoVloer(){
+  const {c,g}=doek();
+  const cel=T/5, diep=(T-90)/5;
+  for(let k=0;k<5;k++)for(let v=0;v<5;v++){
+    const sc=(k+1)*(v+1);
+    g.fillStyle=sc>=15?"rgba(226,98,44,.55)":sc>=6?"rgba(232,185,55,.45)":"rgba(46,158,98,.45)";
+    g.fillRect(k*cel,(4-v)*diep,cel,diep);
+    g.strokeStyle="rgba(233,169,60,.25)"; g.lineWidth=2; g.strokeRect(k*cel,(4-v)*diep,cel,diep);}
+  for(let k=0;k<5;k++) txt(g,"kans "+(k+1),k*cel+cel/2,T-115,{size:22,align:"center",kleur:"#0E141C"});
+  P.risicos.forEach(r=>{
+    const x=(r.kans-.5)*cel, z=(5-(r.gevolg-.5))*diep;
+    g.fillStyle="rgba(0,0,0,.35)"; g.beginPath(); g.ellipse(x,z,34,16,0,0,7); g.fill();});
+  band(g,"RISICO'S \u00b7 KANS \u00d7 GEVOLG","hoogte = geldwaarde");
+  return c;
+}
+/* --- locatie --- */
+function locatieVloer(){
+  const {c,g}=doek();
+  g.strokeStyle="#3E5C74"; g.lineWidth=86; g.lineCap="round";
+  g.beginPath(); g.moveTo(0,390); g.quadraticCurveTo(280,215,600,150); g.lineTo(T,60); g.stroke();
+  g.lineCap="butt";
+  g.strokeStyle="rgba(233,169,60,.6)"; g.lineWidth=9;
+  g.beginPath(); g.moveTo(60,T-110); g.quadraticCurveTo(330,610,620,545); g.lineTo(T,390); g.stroke();
+  g.strokeStyle="rgba(233,169,60,.32)"; g.lineWidth=5;
+  g.beginPath(); g.moveTo(215,130); g.quadraticCurveTo(375,460,395,T-110); g.stroke();
+  [["Den Haag",335,280],["Delft",420,565],["Zoetermeer",735,540],["Rotterdam",470,865],["Leiden",840,195]]
+    .forEach(p=>txt(g,p[0],p[1],p[2],{size:24,kleur:"#8FA0B5"}));
+  P.locatie.forEach(l=>{const x=l.x/780*T, z=l.z/780*T;
+    g.fillStyle="rgba(0,0,0,.4)"; g.beginPath(); g.ellipse(x,z,20,9,0,0,7); g.fill();});
+  band(g,"LOCATIE \u00b7 WERKVAKKEN","pinhoogte = resterende werkvoorraad");
+  return c;
+}
+/* --- kwaliteit --- */
+function kwalLaag(b){
+  const {c,g}=doek(true);
+  const tot=b.goed+b.hersteld+b.open, cx=350, cy=T/2, R=220, r=140;
+  let h=-Math.PI/2;
+  [[b.goed,KL.groen],[b.hersteld,KL.geel],[b.open,KL.oranje]].forEach(s=>{
+    const e=h+s[0]/tot*Math.PI*2;
+    g.beginPath(); g.arc(cx,cy,R,h,e); g.arc(cx,cy,r,e,h,true); g.closePath();
+    g.fillStyle=s[1]; g.fill(); h=e;});
+  txt(g,Math.round(b.goed/tot*100)+"%",cx,cy+22,{size:76,align:"center",kleur:"#F8F6F3",font:"Georgia, serif"});
+  txt(g,"direct akkoord",cx,cy+66,{size:22,align:"center"});
+  txt(g,b.naam,640,cy-30,{size:38,kleur:"#F2C97D",font:"Georgia, serif"});
+  txt(g,tot+" keuringen \u00b7 "+b.hersteld+" hersteld",640,cy+18,{size:22});
+  txt(g,b.open+" nog open",640,cy+56,{size:22,kleur:b.open>3?"#E2622C":"#B7C2D2"});
+  return c;
+}
+function kwalVoor(){
+  const {c,g}=doek(true);
+  P.kwaliteit.afwijkingen.forEach((a,i)=>{
+    const y=220+i*190, kleur=a.ernst==="hoog"?KL.oranje:a.ernst==="midden"?KL.geel:KL.groen;
+    g.fillStyle="rgba(14,20,28,.86)"; g.fillRect(150,y-48,730,112);
+    g.strokeStyle=kleur; g.lineWidth=3; g.strokeRect(150,y-48,730,112);
+    g.fillStyle=kleur; g.fillRect(150,y-48,10,112);
+    txt(g,a.code,186,y-6,{size:30,kleur:"#F8F6F3",font:"Georgia, serif"});
+    txt(g,a.tekst,186,y+36,{size:22});});
+  return c;
+}
+function kwalVloer(){
+  const {c,g}=doek();
+  P.kwaliteit.bouwdelen.forEach((b,i)=>{
+    g.fillStyle="rgba(111,168,214,.07)"; g.fillRect(90+i*300,80,250,T-330);
+    g.strokeStyle="rgba(233,169,60,.22)"; g.lineWidth=2; g.strokeRect(90+i*300,80,250,T-330);
+    txt(g,b.naam,215+i*300,T-140,{size:24,align:"center",kleur:"#8FA0B5"});});
+  band(g,"KWALITEIT \u00b7 KEURINGEN","83% van 128 keuringen direct akkoord");
+  return c;
+}
+
+/* =========================================================
+   4. Vlakdefinities
+   ========================================================= */
+const VLAKKEN=[
+ {id:"planning",label:"Planning",dataset:"Activiteitenplanning 2026",eenheid:"8 activiteiten · 12 maanden",
+  normaal:new THREE.Vector3(0,0,1),
+  status:"6 weken uitloop",statusKleur:KL.oranje,
+  lead:"Acht hoofdactiviteiten over elf maanden. Hoe verder naar voren, hoe recenter de planversie.",
+  diepte:"Diepte = planversie: basis, actueel, prognose.",
+  cijfers:[["Doorlooptijd","11 mnd"],["Kritiek","4 activiteiten"],["Uitloop","6 weken"]],
+  vloer:planningVloer,
+  lagen:[{z:90,op:.6,mk:()=>planningLaag("basis",[KL.grijsblauw,KL.grijsblauw],false),naam:"Basisplanning"},
+         {z:512,op:1, mk:()=>planningLaag("actueel",[KL.blauw,KL.oranje],true),naam:"Actuele planning"},
+         {z:930,op:.9,mk:()=>planningLaag("prognose",["rgba(111,168,214,.5)","rgba(226,98,44,.6)"],false),naam:"Prognose"}],
+  objecten:()=>[]},
+
+ {id:"kosten",label:"Kosten",dataset:"Opnemen × 1.000",eenheid:"cumulatief per kostensoort",
+  normaal:new THREE.Vector3(0,1,0),
+  status:"prognose over budget",statusKleur:KL.oranje,
+  lead:"Van € 2,0 mln budget is 42,7% opgenomen, inclusief € 214.000 meerwerk.",
+  diepte:"Diepte = kostensoort: bouwkosten, engineering, risicoreservering.",
+  cijfers:[["Budget",euro(2000000)],["Opgenomen",euro(853000)],["Prognose",euro(2096000)]],
+  vloer:kostenVloer,
+  lagen:P.kosten.soorten.map((s,i)=>({z:[90,512,930][i],op:[.7,1,.95][i],mk:()=>kostenLaag(s),naam:s.naam})),
+  objecten:()=>[]},
+
+ {id:"capaciteit",label:"Capaciteit",dataset:"Fte per maand",eenheid:"drie herkomsten · 12 maanden",
+  normaal:new THREE.Vector3(1,0,0),
+  status:"piek juni tekort",statusKleur:KL.geel,
+  lead:"De vraag loopt op naar 15 fte in juni, tegenover 12 fte vaste bezetting.",
+  diepte:"Diepte = herkomst: eigen personeel, inhuur, onderaanneming.",
+  cijfers:[["Piekvraag","15 fte"],["Bezetting","12 fte"],["Tekort","5 fte-mnd"]],
+  vloer:capVloer,
+  lagen:P.capaciteit.bronnen.map((b,i)=>({z:[90,512,930][i],op:[.7,1,.95][i],mk:()=>capLaag(b),naam:b.naam})),
+  objecten:()=>[]},
+
+ {id:"risicos",label:"Risico's",dataset:"Kans × gevolg",eenheid:"6 actieve risico's",
+  normaal:new THREE.Vector3(0,0,-1),
+  status:"1 risico in rood",statusKleur:KL.oranje,
+  lead:"Zes risico's zweven boven de matrix: kans in de breedte, gevolg in de diepte, geld in de hoogte.",
+  diepte:"Diepte = gevolg. Achteraan gevolg 5, vooraan gevolg 1.",
+  cijfers:[["Risico's","6"],["In rood veld","1"],["Bruto waarde",euro(403000)]],
+  vloer:risicoVloer, lagen:[],
+  objecten:()=>P.risicos.map(r=>{
+    const cel=T/5, diep=(T-90)/5;
+    return {type:"bol",x:(r.kans-.5)*cel,y:150+r.geld/120000*540,z:(5-(r.gevolg-.5))*diep,
+      d:70+Math.sqrt(r.geld)/6,label:"\u20AC"+Math.round(r.geld/1000)+"k",titel:r.naam};})},
+
+ {id:"locatie",label:"Locatie",dataset:"Werkvakken Haaglanden",eenheid:"9 vakken · 11,4 km",
+  normaal:new THREE.Vector3(-1,0,0),
+  status:"9 werkvakken",statusKleur:"#3C6F9C",
+  lead:"Negen werkvakken in ware onderlinge ligging op de vloer van de kubus.",
+  diepte:"De kaart ligt op de vloer; de pinhoogte is de resterende werkvoorraad.",
+  cijfers:[["Werkvakken","9"],["Gereed","2"],["Tracé","11,4 km"]],
+  vloer:locatieVloer, lagen:[],
+  objecten:()=>P.locatie.map(l=>({type:"pin",x:l.x/780*T,y:l.rest*3.4+120,z:l.z/780*T,
+    kleur:KL[l.status],label:l.naam,titel:l.deel}))},
+
+ {id:"kwaliteit",label:"Kwaliteit",dataset:"Keuringen en afwijkingen",eenheid:"128 keuringen · 3 bouwdelen",
+  normaal:new THREE.Vector3(0,-1,0),
+  status:"3 afwijkingen open",statusKleur:KL.geel,
+  lead:"Per bouwdeel één keuringsring. 83% van 128 keuringen direct akkoord.",
+  diepte:"Diepte = bouwdeel. Vlak achter de opening hangen de afwijkingen.",
+  cijfers:[["Keuringen","128"],["Direct akkoord","83%"],["Open","3"]],
+  vloer:kwalVloer,
+  lagen:[...P.kwaliteit.bouwdelen.map((b,i)=>({z:[80,430,780][i],op:[.65,.85,1][i],
+      mk:()=>kwalLaag(b),naam:b.naam})),
+    {z:985,op:1,mk:kwalVoor,naam:"Openstaande afwijkingen"}],
+  objecten:()=>[]}
+];
+/* =========================================================
+   5. Scène — stereo split-screen voor een telefoonhouder
+   ========================================================= */
+let scene,camera,renderer,stereo,kubusGroep,binnen,vlakGroepen=[],paneel,paneelDoek,
+    actief=-1,klikbaar=[],richtring,voortgangschijf,draait=false;
+const MIDDEN=new THREE.Vector3(0,1.50,-1.65);
+const OOGHOOGTE=1.50, DWELL=1.35;
+
+function bouwScene(){
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color("#0E141C");
+  scene.fog=new THREE.Fog("#0E141C",7,18);
+
+  camera=new THREE.PerspectiveCamera(72,(innerWidth/2)/innerHeight,.05,60);
+  camera.position.set(0,OOGHOOGTE,0);
+  scene.add(camera);
+
+  renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  document.body.appendChild(renderer.domElement);
+
+  stereo=new THREE.StereoCamera(); stereo.eyeSep=.062;
+
+  scene.add(new THREE.HemisphereLight("#cfe0f2","#1a2330",1.6));
+  const dl=new THREE.DirectionalLight("#ffffff",1.1); dl.position.set(2,4,2); scene.add(dl);
+  const grid=new THREE.GridHelper(16,32,"#5C0A0A","#1d2732");
+  grid.material.opacity=.45; grid.material.transparent=true; scene.add(grid);
+
+  /* de kubus */
+  kubusGroep=new THREE.Group(); kubusGroep.position.copy(MIDDEN); scene.add(kubusGroep);
+  binnen=new THREE.Group(); kubusGroep.add(binnen);
+
+  VLAKKEN.forEach((v,i)=>{
+    const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1),v.normaal.clone().normalize());
+    const groep=new THREE.Group(); groep.quaternion.copy(q); kubusGroep.add(groep);
+    const scharnier=new THREE.Group(); scharnier.position.set(0,KUB/2,KUB/2); groep.add(scharnier);
+    const mat=new THREE.MeshBasicMaterial({map:tex(zijdeDoek(v)),transparent:true,side:THREE.DoubleSide});
+    const mesh=new THREE.Mesh(new THREE.PlaneGeometry(KUB,KUB),mat);
+    mesh.position.set(0,-KUB/2,0);
+    mesh.userData={vlak:i,soort:"zijde"};
+    scharnier.add(mesh);
+    vlakGroepen.push({scharnier,mat,doel:0}); klikbaar.push(mesh);
+  });
+
+  /* tegels: twee rijen van vier, onder de kubus */
+  const balkGroep=new THREE.Group();
+  balkGroep.position.set(0,MIDDEN.y-KUB/2-.30,MIDDEN.z+.34);
+  balkGroep.rotation.x=-.52; scene.add(balkGroep);
+  const items=[...VLAKKEN.map((v,i)=>({tekst:v.label,i})),
+               {tekst:"Centreren",i:-2},{tekst:"Sluiten",i:-1}];
+  items.forEach((it,k)=>{
+    const c=document.createElement("canvas"); c.width=512; c.height=170;
+    const g=c.getContext("2d");
+    g.fillStyle=it.i<0?"#5C0A0A":"#26334A"; g.fillRect(0,0,512,170);
+    g.strokeStyle="#E9A93C"; g.lineWidth=6; g.strokeRect(6,6,500,158);
+    g.fillStyle="#F8F6F3"; g.font="60px Georgia, serif"; g.textAlign="center";
+    g.fillText(it.tekst,256,108);
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(.27,.09),
+      new THREE.MeshBasicMaterial({map:tex(c),transparent:true}));
+    m.position.set(((k%4)-1.5)*.30, (k<4? .055 : -.055), 0);
+    m.userData={vlak:it.i,soort:"tegel"};
+    balkGroep.add(m); klikbaar.push(m);
+  });
+
+  /* informatiepaneel rechts */
+  paneelDoek=document.createElement("canvas"); paneelDoek.width=1024; paneelDoek.height=760;
+  paneel=new THREE.Mesh(new THREE.PlaneGeometry(1.0,.74),
+    new THREE.MeshBasicMaterial({map:tex(paneelDoek),transparent:true}));
+  paneel.position.set(1.42,1.48,-1.20); paneel.rotation.y=-.72; scene.add(paneel);
+
+  /* richtpunt: ring met vullende schijf, vast aan de camera */
+  const ring=new THREE.Mesh(new THREE.RingGeometry(.011,.014,32),
+    new THREE.MeshBasicMaterial({color:"#F8F6F3",transparent:true,opacity:.75,depthTest:false}));
+  const schijf=new THREE.Mesh(new THREE.CircleGeometry(.010,28),
+    new THREE.MeshBasicMaterial({color:"#E9A93C",transparent:true,opacity:.95,depthTest:false}));
+  ring.position.z=schijf.position.z=-1.0;
+  ring.renderOrder=schijf.renderOrder=999;
+  schijf.scale.setScalar(.001);
+  camera.add(ring); camera.add(schijf);
+  richtring=ring; voortgangschijf=schijf;
+
+  addEventListener("resize",maat);
+  maat();
+  toon(0);
+}
+function maat(){
+  camera.aspect=(innerWidth/2)/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+  document.getElementById("melding").textContent =
+    innerHeight>innerWidth ? "Draai je telefoon in liggende stand" : "";
+}
+
+/* --- binnenkant vullen (gelijk aan de headsetversie) --- */
+function leeg(g){ while(g.children.length){ const k=g.children.pop();
+  k.traverse(o=>{ if(o.geometry)o.geometry.dispose();
+    if(o.material){ if(o.material.map)o.material.map.dispose(); o.material.dispose(); } }); } }
+
+function vul(v){
+  leeg(binnen);
+  binnen.quaternion.copy(new THREE.Quaternion()
+    .setFromUnitVectors(new THREE.Vector3(0,0,1),v.normaal.clone().normalize()));
+  const h=KUB/2, wandMat=c=>new THREE.MeshBasicMaterial({map:tex(c),side:THREE.DoubleSide});
+  const kaal=()=>{const {c,g}=doek(false,"#243044"); raster(g); return c;};
+
+  const achter=new THREE.Mesh(new THREE.PlaneGeometry(KUB,KUB),wandMat(kaal()));
+  achter.position.z=-h+.002; binnen.add(achter);
+  const zij=new THREE.Mesh(new THREE.PlaneGeometry(KUB,KUB),
+    new THREE.MeshBasicMaterial({color:"#1b2431",side:THREE.DoubleSide}));
+  zij.position.x=-h+.002; zij.rotation.y=Math.PI/2; binnen.add(zij);
+  const vloer=new THREE.Mesh(new THREE.PlaneGeometry(KUB,KUB),wandMat(v.vloer()));
+  vloer.position.y=-h+.002; vloer.rotation.x=-Math.PI/2; binnen.add(vloer);
+
+  v.lagen.forEach(l=>{
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(KUB,KUB),
+      new THREE.MeshBasicMaterial({map:tex(l.mk()),transparent:true,opacity:l.op,
+        side:THREE.DoubleSide,depthWrite:false}));
+    m.position.z=pz(l.z); binnen.add(m);
+    binnen.add(etiket(l.naam,new THREE.Vector3(px(60),py(60),pz(l.z)+.004),.22));
+  });
+
+  v.objecten().forEach(o=>{
+    if(o.type==="bol"){
+      const r=pu(o.d)/2;
+      const bol=new THREE.Mesh(new THREE.SphereGeometry(r,26,18),
+        new THREE.MeshStandardMaterial({color:"#3C6F9C",roughness:.45}));
+      bol.position.set(px(o.x),-KUB/2+pu(o.y),pz(o.z)); binnen.add(bol);
+      binnen.add(etiket(o.label+"  "+o.titel,
+        new THREE.Vector3(px(o.x),-KUB/2+pu(o.y)+r+.05,pz(o.z)),.34,true));
+    }else{
+      const hgt=pu(o.y);
+      const pin=new THREE.Mesh(new THREE.ConeGeometry(pu(26),hgt,16),
+        new THREE.MeshStandardMaterial({color:o.kleur,roughness:.5}));
+      pin.position.set(px(o.x),-KUB/2+hgt/2,pz(o.z)); binnen.add(pin);
+      binnen.add(etiket(o.label,new THREE.Vector3(px(o.x),-KUB/2+hgt+.055,pz(o.z)),.18,true));
+    }
+  });
+}
+function etiket(tekst,pos,breedte,sprite=false){
+  const c=document.createElement("canvas"); c.width=1024; c.height=160;
+  const g=c.getContext("2d");
+  g.fillStyle="rgba(14,20,28,.82)"; g.fillRect(0,0,1024,160);
+  g.strokeStyle="rgba(233,169,60,.6)"; g.lineWidth=4; g.strokeRect(2,2,1020,156);
+  g.fillStyle="#F2C97D"; g.font="62px system-ui, sans-serif"; g.textAlign="center";
+  g.fillText(tekst,512,106);
+  const t=tex(c), hoogte=breedte*160/1024;
+  if(sprite){
+    const s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true}));
+    s.scale.set(breedte,hoogte,1); s.position.copy(pos); return s;
+  }
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(breedte,hoogte),
+    new THREE.MeshBasicMaterial({map:t,transparent:true,side:THREE.DoubleSide}));
+  m.position.copy(pos); m.position.x+=breedte/2; return m;
+}
+
+/* --- informatiepaneel --- */
+function tekenPaneel(v){
+  const g=paneelDoek.getContext("2d"), W=1024, H=760;
+  g.clearRect(0,0,W,H);
+  g.fillStyle="#F8F6F3"; g.fillRect(0,0,W,H);
+  g.fillStyle=KL.bordeaux; g.fillRect(0,0,W,120);
+  g.textAlign="left";
+  g.fillStyle="#F8F6F3"; g.font="56px Georgia, serif"; g.fillText(v?v.label:"CubEd",40,80);
+  g.fillStyle="#F2C97D"; g.font="24px system-ui, sans-serif";
+  g.fillText(v?v.dataset.toUpperCase():"N470 · DELFT–ZOETERMEER",40,110);
+  if(v){
+    g.font="26px system-ui, sans-serif";
+    g.fillStyle=v.statusKleur; g.fillRect(40,150,g.measureText(v.status.toUpperCase()).width+40,50);
+    g.fillStyle="#fff"; g.fillText(v.status.toUpperCase(),60,184);
+    g.fillStyle="#211C1C"; g.font="32px Georgia, serif"; wikkel(g,v.lead,40,262,940,44);
+    g.fillStyle="#5C0A0A"; g.fillRect(40,368,6,96);
+    g.fillStyle="#4A4342"; g.font="26px system-ui, sans-serif"; wikkel(g,v.diepte,66,398,890,36);
+    v.cijfers.forEach((c,i)=>{
+      const y=530+i*74;
+      g.strokeStyle="#DDD6CE"; g.lineWidth=2; g.setLineDash([3,5]);
+      g.beginPath(); g.moveTo(40,y+18); g.lineTo(984,y+18); g.stroke(); g.setLineDash([]);
+      g.fillStyle="#8A8480"; g.font="26px system-ui, sans-serif"; g.textAlign="left"; g.fillText(c[0],44,y);
+      g.fillStyle="#5C0A0A"; g.font="38px Georgia, serif"; g.textAlign="right"; g.fillText(c[1],980,y);
+      g.textAlign="left";});
+  }else{
+    g.fillStyle="#211C1C"; g.font="32px Georgia, serif";
+    wikkel(g,"Kijk naar een vlak van de kubus tot het ringetje vol is. Dat vlak klapt open en je kijkt de kubus in, waar de data in de diepte staat opgesteld.",40,250,940,46);
+  }
+  paneel.material.map.needsUpdate=true;
+}
+function wikkel(g,tekst,x,y,max,rg){
+  let regel="",yy=y;
+  tekst.split(" ").forEach(w=>{
+    const t=regel?regel+" "+w:w;
+    if(g.measureText(t).width>max){ g.fillText(regel,x,yy); yy+=rg; regel=w; } else regel=t;});
+  g.fillText(regel,x,yy);
+}
+
+/* --- vlak kiezen --- */
+function toon(i){
+  actief=i; const v=VLAKKEN[i];
+  vlakGroepen.forEach((f,k)=>{ f.doel=(k===i)?-1.95:0; f.mat.opacity=(k===i)?.45:1; });
+  vul(v); tekenPaneel(v);
+}
+function sluit(){
+  actief=-1;
+  vlakGroepen.forEach(f=>{ f.doel=0; f.mat.opacity=1; });
+  leeg(binnen); tekenPaneel(null);
+}
+function activeer(obj){
+  const i=obj.userData.vlak;
+  if(i===-2) centreer();
+  else if(i===-1) sluit();
+  else if(i!==actief) toon(i);
+  else sluit();
+}
+
+/* =========================================================
+   6. Kijkrichting van de telefoon
+   ========================================================= */
+const zAs=new THREE.Vector3(0,0,1), eu=new THREE.Euler(),
+      qKwart=new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5)), qHulp=new THREE.Quaternion();
+const qToestel=new THREE.Quaternion(), qOffset=new THREE.Quaternion();
+let sensorActief=false, sleepKijk={yaw:0,pitch:0};
+
+function opOrientatie(e){
+  if(e.alpha===null) return;
+  sensorActief=true;
+  const a=THREE.MathUtils.degToRad(e.alpha||0),
+        b=THREE.MathUtils.degToRad(e.beta||0),
+        g=THREE.MathUtils.degToRad(e.gamma||0),
+        o=THREE.MathUtils.degToRad(screen.orientation?screen.orientation.angle:(window.orientation||0));
+  eu.set(b,a,-g,"YXZ");
+  qToestel.setFromEuler(eu);
+  qToestel.multiply(qKwart);
+  qToestel.multiply(qHulp.setFromAxisAngle(zAs,-o));
+}
+function centreer(){
+  if(sensorActief){
+    const e=new THREE.Euler().setFromQuaternion(qToestel,"YXZ");
+    qOffset.setFromAxisAngle(new THREE.Vector3(0,1,0),-e.y);
+  }else{ sleepKijk.yaw=0; sleepKijk.pitch=0; }
+}
+
+/* zonder sensor: met de vinger rondkijken */
+function sleepBediening(){
+  let sl=false,mx=0,my=0;
+  const dom=renderer.domElement;
+  dom.addEventListener("pointerdown",e=>{sl=true;mx=e.clientX;my=e.clientY});
+  dom.addEventListener("pointermove",e=>{
+    if(!sl||sensorActief)return;
+    sleepKijk.yaw-=(e.clientX-mx)*.005;
+    sleepKijk.pitch=Math.max(-1.2,Math.min(1.2,sleepKijk.pitch-(e.clientY-my)*.005));
+    mx=e.clientX;my=e.clientY;
+  });
+  dom.addEventListener("pointerup",()=>{sl=false});
+}
+
+/* =========================================================
+   7. Blikbediening en stereoweergave
+   ========================================================= */
+const blik=new THREE.Raycaster(), midden=new THREE.Vector2(0,0);
+let gericht=null, sinds=0, geblokkeerd=null;
+const klok=new THREE.Clock();
+
+function lus(){
+  const dt=Math.min(klok.getDelta(),.05);
+
+  /* kijkrichting */
+  if(sensorActief) camera.quaternion.copy(qToestel).premultiply(qOffset);
+  else camera.quaternion.setFromEuler(new THREE.Euler(sleepKijk.pitch,sleepKijk.yaw,0,"YXZ"));
+
+  /* deksels animeren */
+  vlakGroepen.forEach(f=>{ f.scharnier.rotation.x+=(f.doel-f.scharnier.rotation.x)*.12; });
+
+  /* blik */
+  blik.setFromCamera(midden,camera);
+  const t=blik.intersectObjects(klikbaar,false)[0];
+  const obj=t?t.object:null;
+  const afst=t?Math.max(.5,Math.min(4,t.distance)):1.8;
+  richtring.position.z=voortgangschijf.position.z=-afst;
+  richtring.scale.setScalar(afst); 
+  if(obj!==gericht){ gericht=obj; sinds=0; if(obj!==geblokkeerd) geblokkeerd=null; }
+  if(gericht && gericht!==geblokkeerd){
+    sinds+=dt;
+    const p=Math.min(1,sinds/DWELL);
+    voortgangschijf.scale.setScalar(Math.max(.001,p*afst));
+    richtring.material.opacity=.75+.25*p;
+    if(p>=1){ activeer(gericht); geblokkeerd=gericht; sinds=0; voortgangschijf.scale.setScalar(.001); }
+  }else{
+    voortgangschijf.scale.setScalar(.001);
+    richtring.material.opacity=.55;
+  }
+
+  /* stereo: links en rechts apart renderen */
+  camera.updateMatrixWorld();
+  stereo.update(camera);
+  const maatV=renderer.getSize(new THREE.Vector2()), h=maatV.y, hw=maatV.x/2;
+  renderer.setScissorTest(true);
+  renderer.setScissor(0,0,hw,h); renderer.setViewport(0,0,hw,h);
+  renderer.render(scene,stereo.cameraL);
+  renderer.setScissor(hw,0,hw,h); renderer.setViewport(hw,0,hw,h);
+  renderer.render(scene,stereo.cameraR);
+  renderer.setScissorTest(false);
+}
+
+/* =========================================================
+   8. Starten
+   ========================================================= */
+document.getElementById("knop").addEventListener("click",async()=>{
+  try{
+    if(typeof DeviceOrientationEvent!=="undefined" &&
+       typeof DeviceOrientationEvent.requestPermission==="function"){
+      const r=await DeviceOrientationEvent.requestPermission();
+      if(r!=="granted") document.getElementById("melding").textContent=
+        "Geen toegang tot de sensor — rondkijken met de vinger";
+    }
+  }catch(e){}
+  addEventListener("deviceorientation",opOrientatie,true);
+
+  document.getElementById("start").classList.add("verborgen");
+  document.getElementById("naad").classList.remove("verborgen");
+
+  try{ if(navigator.wakeLock) await navigator.wakeLock.request("screen"); }catch(e){}
+
+  bouwScene();
+  sleepBediening();
+  setTimeout(centreer,600);
+  /* tik op het scherm = opnieuw centreren */
+  addEventListener("pointerdown",()=>{ if(sensorActief) centreer(); });
+  renderer.setAnimationLoop(lus);
+});
+</script>
+</body>
+</html>
