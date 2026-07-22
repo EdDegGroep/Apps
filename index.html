@@ -511,42 +511,49 @@ function bouwScene(){
     vlakGroepen.push({mat,mesh,doelOpacity:1}); klikbaar.push(mesh);
   });
 
-  /* zwevende tegelbalk — volgt de kijkrichting en hangt onderaan het beeld */
-  balkGroep=new THREE.Group(); scene.add(balkGroep);
+  /* tegelbalk: vast recht onder de kubus */
+  balkGroep=new THREE.Group();
+  balkGroep.position.set(MIDDEN.x, MIDDEN.y-KUB/2-.26, MIDDEN.z+.46);
+  balkGroep.rotation.x=-.50;
+  scene.add(balkGroep);
   const rijen=[
     VLAKKEN.map((v,i)=>({tekst:v.label,i})),
     [{tekst:"\u25C0",i:-3},{tekst:"\u25B6",i:-4},{tekst:"\u25B2",i:-6},{tekst:"\u25BC",i:-7},
      {tekst:"Stap in",i:-5},{tekst:"Centreren",i:-2},{tekst:"Sluiten",i:-1}]
   ];
-  const maakTegel=(it,x,y,breed)=>{
-    const c=document.createElement("canvas"); c.width=512; c.height=170;
+  const maakTegel=(it,x,y,breed,hoog)=>{
+    const c=document.createElement("canvas"); c.width=512; c.height=230;
     const g=c.getContext("2d");
-    g.fillStyle=it.i<0?"#5C0A0A":"#26334A"; g.fillRect(0,0,512,170);
-    g.strokeStyle="#E9A93C"; g.lineWidth=6; g.strokeRect(6,6,500,158);
-    g.fillStyle="#F8F6F3"; g.font=(it.tekst.length<3?"92px":"56px")+" Georgia, serif";
-    g.textAlign="center"; g.textBaseline="middle"; g.fillText(it.tekst,256,92);
-    const m=new THREE.Mesh(new THREE.PlaneGeometry(breed,breed*170/512),
+    g.fillStyle=it.i<0?"#5C0A0A":"#26334A"; g.fillRect(0,0,512,230);
+    g.strokeStyle="#E9A93C"; g.lineWidth=8; g.strokeRect(8,8,496,214);
+    g.fillStyle="#F8F6F3"; g.font=(it.tekst.length<3?"130px":"70px")+" Georgia, serif";
+    g.textAlign="center"; g.textBaseline="middle"; g.fillText(it.tekst,256,120);
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(breed,hoog),
       new THREE.MeshBasicMaterial({map:tex(c),transparent:true,depthTest:false}));
     m.renderOrder=990; m.position.set(x,y,0);
     m.userData={vlak:it.i,soort:"tegel",teken:g};
     balkGroep.add(m); klikbaar.push(m);
     return m;
   };
+  const HOOG=.105, GAT=.016;
   rijen.forEach((rij,r)=>{
-    const y=r===0? .052 : -.050, stapB=.093;
-    const totaal=rij.reduce((s,it)=>s+(it.i<=-3&&it.i>=-7?.062:stapB)+.006,0);
+    const y=r===0? HOOG/2+GAT/2 : -(HOOG/2+GAT/2);
+    const breed=it=>(it.i<=-3&&it.i>=-7)?.135:.225;
+    const totaal=rij.reduce((s,it)=>s+breed(it)+GAT,0)-GAT;
     let x=-totaal/2;
     rij.forEach(it=>{
-      const smal=(it.i<=-3&&it.i>=-7), b=smal?.062:stapB;
-      const m=maakTegel(it,x+b/2,y,b); x+=b+.006;
+      const b=breed(it);
+      const m=maakTegel(it,x+b/2,y,b,HOOG); x+=b+GAT;
       if(it.i===-5) stapTegel=m;
     });
   });
 
-  /* informatiepaneel — verschijnt zwevend buiten de kubus, aan de achterzijde */
+  /* informatiepaneel — zwevend rechts naast de kubus */
   paneelDoek=document.createElement("canvas"); paneelDoek.width=1024; paneelDoek.height=760;
   paneel=new THREE.Mesh(new THREE.PlaneGeometry(1.05,.78),
     new THREE.MeshBasicMaterial({map:tex(paneelDoek),transparent:true}));
+  paneel.position.set(MIDDEN.x+KUB/2+.66, MIDDEN.y+.06, MIDDEN.z+.30);
+  paneel.rotation.y=-.60;
   paneel.visible=false; scene.add(paneel);
 
   /* richtpunt (alleen in Cardboard zichtbaar) */
@@ -771,8 +778,7 @@ function sleepBediening(){
 const blik=new THREE.Raycaster(), midden=new THREE.Vector2(0,0);
 let gericht=null, sinds=0, geblokkeerd=null;
 const klok=new THREE.Clock();
-const tmpV=new THREE.Vector3(), tmpE=new THREE.Euler(), tmpQ=new THREE.Quaternion(),
-      camPos=new THREE.Vector3();
+const tmpV2=new THREE.Vector2(), camPos=new THREE.Vector3();
 
 function lus(){
   const dt=Math.min(klok.getDelta(),.05);
@@ -793,18 +799,8 @@ function lus(){
     f.mesh.visible = f.mat.opacity>0.04;
   });
 
-  /* zwevende tegelbalk: volgt de kijkrichting, hangt onderaan het beeld */
-  tmpE.setFromQuaternion(camera.quaternion,"YXZ");
-  tmpQ.setFromAxisAngle(AS_Y,tmpE.y);
-  balkGroep.quaternion.copy(tmpQ); balkGroep.rotateX(-0.92);
-  balkGroep.position.copy(camPos).add(tmpV.set(0,-0.42,-0.92).applyQuaternion(tmpQ));
-
-  /* informatiepaneel zwevend buiten de kubus, aan de achterzijde van het gekozen vlak */
-  if(paneel.visible && actief>=0){
-    const n=VLAKKEN[actief].normaal.clone().applyQuaternion(kubusGroep.quaternion).normalize();
-    paneel.position.copy(MIDDEN).addScaledVector(n,-KUB*0.72).add(tmpV.set(0,KUB*0.72,0));
-    paneel.lookAt(camPos);
-  }
+  /* tegelbalk en tekstvlak staan vast bij de kubus; het paneel blijft leesbaar gericht */
+  if(paneel.visible) paneel.lookAt(camPos);
 
   /* blik */
   blik.setFromCamera(midden,camera);
@@ -831,7 +827,7 @@ function lus(){
 
   /* weergeven: op scherm één beeld, in Cardboard links en rechts apart */
   camera.updateMatrixWorld();
-  const maatV=renderer.getSize(tmpV), h=maatV.y, w=maatV.x;
+  const maatV=renderer.getSize(tmpV2), h=maatV.y, w=maatV.x;
   if(stereoAan()){
     stereo.update(camera);
     const hw=w/2;
