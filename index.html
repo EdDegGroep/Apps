@@ -19,9 +19,10 @@
   #start p{font-size:14.5px;line-height:1.6;color:rgba(248,246,243,.85);margin:0 0 14px;text-align:left}
   #start b{font-weight:normal;color:#F2C97D}
   #start ol{text-align:left;font-size:14.5px;line-height:1.7;color:rgba(248,246,243,.85);padding-left:20px;margin:0 0 22px}
-  #knop{background:#5C0A0A;color:#F8F6F3;border:1px solid #E9A93C;padding:16px 34px;font-size:15px;
-    letter-spacing:2.4px;text-transform:uppercase;cursor:pointer;font-family:inherit;border-radius:2px}
-  #knop:active{background:#7E1616}
+  #knop-scherm,#knop-vr{background:#5C0A0A;color:#F8F6F3;border:1px solid #E9A93C;padding:16px 26px;font-size:14px;
+    letter-spacing:2px;text-transform:uppercase;cursor:pointer;font-family:inherit;border-radius:2px}
+  #knop-vr{background:#26334A}
+  #knop-scherm:active,#knop-vr:active{background:#7E1616}
   #melding{position:fixed;left:0;right:0;bottom:14px;text-align:center;font-size:12px;color:#8FA0B5;z-index:5;
     pointer-events:none;letter-spacing:1.4px}
   #naad{position:fixed;top:0;bottom:0;left:50%;width:1px;background:rgba(233,169,60,.25);z-index:4;pointer-events:none}
@@ -38,11 +39,15 @@
     <li>Tik op <b>Start</b> en geef toegang tot de bewegingssensor.</li>
     <li>Schuif de telefoon in de houder en zet de bril op.</li>
   </ol>
-  <p><b>Bedienen doe je met je blik:</b> kijk naar een vlak tot het ringetje vol is; dat vlak klapt open en blijft open.
-     Onder de kubus zweven tegels: de zes vlakken, <b>◀ Draai</b> en <b>Draai ▶</b> (kijk erop om te draaien),
-     <b>Stap in</b> om in de kubus te gaan staan, <b>Centreren</b> en <b>Sluiten</b>.</p>
-  <p>Handmatig draaien kan ook: <b>veeg</b> over het scherm. De kubus gaat alleen dicht via de tegel Sluiten.</p>
-  <button id="knop">Start</button>
+  <p><b>Bedienen doe je met je blik of muis:</b> richt op een tegel of wand tot het ringetje vol is (in Cardboard),
+     of klik erop (op een scherm). De vier pijlen draaien de kubus in alle richtingen; met de tegels kies je een wand,
+     stap je de kubus in en uit, centreer je en sluit je.</p>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:8px">
+    <button id="knop-scherm">3D op scherm</button>
+    <button id="knop-vr">Cardboard-bril</button>
+  </div>
+  <p style="font-size:12px;color:#8FA0B5;margin-top:14px">Cardboard gebruikt de bewegingssensor en werkt alleen via https.
+     Op een gewoon scherm draai je met de muis en kies je met een klik.</p>
 </div></div>
 
 <div id="naad" class="verborgen"></div>
@@ -169,9 +174,14 @@ function zijdeDoek(v){
     g.fillRect(x+2*s/3,y+s/3,s/3,s/3); g.fillRect(x+s/3,y+2*s/3,s/3,s/3);};
   mk(22,22); mk(T-76,22); mk(22,T-76); mk(T-76,T-76);
   txt(g,v.label.toUpperCase(),T/2,110,{size:40,kleur:"#E9A93C",align:"center",sp:14});
-  txt(g,v.dataset.toUpperCase(),T/2,T-96,{size:24,kleur:"#8FA0B5",align:"center",sp:4});
-  txt(g,v.eenheid,T/2,T-62,{size:20,kleur:"#5C6B80",align:"center"});
   ICOON[v.id](g);
+  /* balk onderaan de wand die de bijbehorende tegel visualiseert */
+  const by=T-150, bh=104, bx=90, bw=T-180;
+  g.fillStyle="#26334A"; g.fillRect(bx,by,bw,bh);
+  g.strokeStyle="#E9A93C"; g.lineWidth=5; g.strokeRect(bx,by,bw,bh);
+  g.fillStyle=v.statusKleur||"#6FA8D6"; g.fillRect(bx,by,20,bh);
+  txt(g,v.dataset,bx+44,by+50,{size:30,kleur:"#F8F6F3",align:"left",font:"Georgia, serif"});
+  txt(g,v.eenheid,bx+44,by+86,{size:22,kleur:"#8FA0B5",align:"left"});
   return c;
 }
 const ICOON={
@@ -445,24 +455,31 @@ const VLAKKEN=[
 /* =========================================================
    5. Scène — stereo split-screen voor een telefoonhouder
    ========================================================= */
-let scene,camera,renderer,stereo,kubusGroep,binnen,vlakGroepen=[],paneel,paneelDoek,
-    actief=-1,klikbaar=[],richtring,voortgangschijf,draait=false;
+let scene,camera,renderer,stereo,kubusGroep,binnen,vlakGroepen=[],paneel,paneelDoek,balkGroep,
+    actief=-1,klikbaar=[],richtring,voortgangschijf;
 const MIDDEN=new THREE.Vector3(0,1.50,-1.65);
 const OOGHOOGTE=1.50, DWELL=1.35;
 
-/* draaien en in-de-kubus-stappen */
-let kubusYaw=0, draaiRichting=0;              // draaiRichting: -1 / 0 / +1
+let modus="cardboard";                        // "scherm" of "cardboard"
+const stereoAan=()=>modus==="cardboard";
+
+/* draaien (in alle richtingen) en in-de-kubus-stappen */
+let draaiAs=null;                             // wereld-as waar continu omheen gedraaid wordt
 let binnenIn=false, stapTegel=null;
 const camBuiten=new THREE.Vector3(0,OOGHOOGTE,0);
-const camBinnen=new THREE.Vector3(MIDDEN.x,MIDDEN.y,MIDDEN.z+KUB/2-0.18); // net binnen het voorvlak
+const camBinnen=new THREE.Vector3(MIDDEN.x,MIDDEN.y,MIDDEN.z+KUB/2-0.18);
 const camDoel=camBuiten.clone();
+const AS_X=new THREE.Vector3(1,0,0), AS_Y=new THREE.Vector3(0,1,0);
+function draaiKubus(as,hoek){                  // draai om een wereld-as, ongeacht huidige stand
+  kubusGroep.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(as,hoek));
+}
 
 function bouwScene(){
   scene=new THREE.Scene();
   scene.background=new THREE.Color("#0E141C");
   scene.fog=new THREE.Fog("#0E141C",7,18);
 
-  camera=new THREE.PerspectiveCamera(72,(innerWidth/2)/innerHeight,.05,60);
+  camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.05,60);
   camera.position.set(0,OOGHOOGTE,0);
   scene.add(camera);
 
@@ -479,60 +496,60 @@ function bouwScene(){
   const grid=new THREE.GridHelper(16,32,"#5C0A0A","#1d2732");
   grid.material.opacity=.45; grid.material.transparent=true; scene.add(grid);
 
-  /* de kubus */
+  /* de kubus — de wanden blijven op hun plaats, ze klappen niet meer open */
   kubusGroep=new THREE.Group(); kubusGroep.position.copy(MIDDEN); scene.add(kubusGroep);
   binnen=new THREE.Group(); kubusGroep.add(binnen);
 
   VLAKKEN.forEach((v,i)=>{
     const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1),v.normaal.clone().normalize());
     const groep=new THREE.Group(); groep.quaternion.copy(q); kubusGroep.add(groep);
-    const scharnier=new THREE.Group(); scharnier.position.set(0,KUB/2,KUB/2); groep.add(scharnier);
     const mat=new THREE.MeshBasicMaterial({map:tex(zijdeDoek(v)),transparent:true,side:THREE.DoubleSide});
     const mesh=new THREE.Mesh(new THREE.PlaneGeometry(KUB,KUB),mat);
-    mesh.position.set(0,-KUB/2,0);
+    mesh.position.set(0,0,KUB/2);            // wand op zijn plek, niet aan een scharnier
     mesh.userData={vlak:i,soort:"zijde"};
-    scharnier.add(mesh);
-    vlakGroepen.push({scharnier,mat,doel:0}); klikbaar.push(mesh);
+    groep.add(mesh);
+    vlakGroepen.push({mat,mesh,doelOpacity:1}); klikbaar.push(mesh);
   });
 
-  /* tegelbalk onder de kubus: bovenrij de zes vlakken, onderrij de bediening */
-  const balkGroep=new THREE.Group();
-  balkGroep.position.set(0,MIDDEN.y-KUB/2-.34,MIDDEN.z+.40);
-  balkGroep.rotation.x=-.52; scene.add(balkGroep);
+  /* zwevende tegelbalk — volgt de kijkrichting en hangt onderaan het beeld */
+  balkGroep=new THREE.Group(); scene.add(balkGroep);
   const rijen=[
     VLAKKEN.map((v,i)=>({tekst:v.label,i})),
-    [{tekst:"\u25C0 Draai",i:-3},{tekst:"Draai \u25B6",i:-4},
+    [{tekst:"\u25C0",i:-3},{tekst:"\u25B6",i:-4},{tekst:"\u25B2",i:-6},{tekst:"\u25BC",i:-7},
      {tekst:"Stap in",i:-5},{tekst:"Centreren",i:-2},{tekst:"Sluiten",i:-1}]
   ];
-  const maakTegel=(it,x,y)=>{
+  const maakTegel=(it,x,y,breed)=>{
     const c=document.createElement("canvas"); c.width=512; c.height=170;
     const g=c.getContext("2d");
     g.fillStyle=it.i<0?"#5C0A0A":"#26334A"; g.fillRect(0,0,512,170);
     g.strokeStyle="#E9A93C"; g.lineWidth=6; g.strokeRect(6,6,500,158);
-    g.fillStyle="#F8F6F3"; g.font="58px Georgia, serif"; g.textAlign="center"; g.textBaseline="middle";
-    g.fillText(it.tekst,256,92);
-    const m=new THREE.Mesh(new THREE.PlaneGeometry(.25,.083),
-      new THREE.MeshBasicMaterial({map:tex(c),transparent:true}));
-    m.position.set(x,y,0);
-    m.userData={vlak:it.i,soort:"tegel",teken:g,doek:c};
+    g.fillStyle="#F8F6F3"; g.font=(it.tekst.length<3?"92px":"56px")+" Georgia, serif";
+    g.textAlign="center"; g.textBaseline="middle"; g.fillText(it.tekst,256,92);
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(breed,breed*170/512),
+      new THREE.MeshBasicMaterial({map:tex(c),transparent:true,depthTest:false}));
+    m.renderOrder=990; m.position.set(x,y,0);
+    m.userData={vlak:it.i,soort:"tegel",teken:g};
     balkGroep.add(m); klikbaar.push(m);
     return m;
   };
   rijen.forEach((rij,r)=>{
-    const y=r===0? .052 : -.052;
-    rij.forEach((it,k)=>{
-      const m=maakTegel(it,(k-(rij.length-1)/2)*.275,y);
+    const y=r===0? .052 : -.050, stapB=.093;
+    const totaal=rij.reduce((s,it)=>s+(it.i<=-3&&it.i>=-7?.062:stapB)+.006,0);
+    let x=-totaal/2;
+    rij.forEach(it=>{
+      const smal=(it.i<=-3&&it.i>=-7), b=smal?.062:stapB;
+      const m=maakTegel(it,x+b/2,y,b); x+=b+.006;
       if(it.i===-5) stapTegel=m;
     });
   });
 
-  /* informatiepaneel rechts */
+  /* informatiepaneel — verschijnt zwevend buiten de kubus, aan de achterzijde */
   paneelDoek=document.createElement("canvas"); paneelDoek.width=1024; paneelDoek.height=760;
-  paneel=new THREE.Mesh(new THREE.PlaneGeometry(1.0,.74),
+  paneel=new THREE.Mesh(new THREE.PlaneGeometry(1.05,.78),
     new THREE.MeshBasicMaterial({map:tex(paneelDoek),transparent:true}));
-  paneel.position.set(1.42,1.48,-1.20); paneel.rotation.y=-.72; scene.add(paneel);
+  paneel.visible=false; scene.add(paneel);
 
-  /* richtpunt: ring met vullende schijf, vast aan de camera */
+  /* richtpunt (alleen in Cardboard zichtbaar) */
   const ring=new THREE.Mesh(new THREE.RingGeometry(.011,.014,32),
     new THREE.MeshBasicMaterial({color:"#F8F6F3",transparent:true,opacity:.75,depthTest:false}));
   const schijf=new THREE.Mesh(new THREE.CircleGeometry(.010,28),
@@ -542,16 +559,18 @@ function bouwScene(){
   schijf.scale.setScalar(.001);
   camera.add(ring); camera.add(schijf);
   richtring=ring; voortgangschijf=schijf;
+  ring.visible=schijf.visible=stereoAan();
 
   addEventListener("resize",maat);
   maat();
   toon(0);
 }
 function maat(){
-  camera.aspect=(innerWidth/2)/innerHeight; camera.updateProjectionMatrix();
+  camera.aspect=(stereoAan()?(innerWidth/2):innerWidth)/innerHeight;
+  camera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
   document.getElementById("melding").textContent =
-    innerHeight>innerWidth ? "Draai je telefoon in liggende stand" : "";
+    (stereoAan()&&innerHeight>innerWidth) ? "Draai je telefoon in liggende stand" : "";
 }
 
 /* --- binnenkant vullen (gelijk aan de headsetversie) --- */
@@ -657,19 +676,20 @@ function wikkel(g,tekst,x,y,max,rg){
 /* --- vlak kiezen --- */
 function toon(i){
   actief=i; const v=VLAKKEN[i];
-  vlakGroepen.forEach((f,k)=>{ f.doel=(k===i)?-1.95:0; f.mat.opacity=(k===i)?.45:1; });
-  vul(v); tekenPaneel(v);
+  /* de gekozen wand vervaagt zodat je de data erachter ziet; de rest blijft dicht */
+  vlakGroepen.forEach((f,k)=>{ f.doelOpacity=(k===i)?0.06:1; });
+  vul(v); tekenPaneel(v); paneel.visible=true;
 }
 function sluit(){
   actief=-1;
-  vlakGroepen.forEach(f=>{ f.doel=0; f.mat.opacity=1; });
-  leeg(binnen); tekenPaneel(null);
+  vlakGroepen.forEach(f=>{ f.doelOpacity=1; });
+  leeg(binnen); paneel.visible=false;
 }
 function hertekenTegel(m,tekst){
   const g=m.userData.teken;
   g.fillStyle="#5C0A0A"; g.fillRect(0,0,512,170);
   g.strokeStyle="#E9A93C"; g.lineWidth=6; g.strokeRect(6,6,500,158);
-  g.fillStyle="#F8F6F3"; g.font="58px Georgia, serif"; g.textAlign="center"; g.textBaseline="middle";
+  g.fillStyle="#F8F6F3"; g.font="56px Georgia, serif"; g.textAlign="center"; g.textBaseline="middle";
   g.fillText(tekst,256,92);
   m.material.map.needsUpdate=true;
 }
@@ -680,11 +700,12 @@ function stapWissel(){
 }
 function activeer(obj){
   const i=obj.userData.vlak;
-  if(i===-1){ sluit(); return; }        // alleen deze tegel sluit de kubus
+  if(i===-1){ sluit(); return; }        // alleen deze tegel sluit de weergave
   if(i===-2){ centreer(); return; }
   if(i===-5){ stapWissel(); return; }
-  if(i===-3||i===-4) return;            // draaien loopt continu in de renderlus
-  if(i>=0 && i!==actief) toon(i);       // ander vlak kiezen; hetzelfde vlak laat 'm openstaan
+  const as=asVanTegel(i);
+  if(as){ if(!stereoAan()) draaiKubus(as[0], as[1]*0.26); return; } // pijlen: klik = stap, blik = continu
+  if(i>=0 && i!==actief) toon(i);       // ander vlak kiezen
 }
 
 /* =========================================================
@@ -714,22 +735,34 @@ function centreer(){
   }else{ sleepKijk.yaw=0; sleepKijk.pitch=0; }
 }
 
-/* zonder sensor: met de vinger rondkijken */
+/* slepen draait de kubus; op een scherm kiest een klik */
+let dolly=0;
+function asVanTegel(i){
+  return i===-3?[AS_Y, 1]: i===-4?[AS_Y,-1]: i===-6?[AS_X,-1]: i===-7?[AS_X, 1]: null;
+}
 function sleepBediening(){
-  let sl=false,mx=0,my=0;
+  let sl=false,mx=0,my=0,mx0=0,my0=0,bewogen=false;
   const dom=renderer.domElement;
-  dom.addEventListener("pointerdown",e=>{sl=true;mx=e.clientX;my=e.clientY});
+  dom.addEventListener("pointerdown",e=>{sl=true;bewogen=false;mx=mx0=e.clientX;my=my0=e.clientY});
   dom.addEventListener("pointermove",e=>{
     if(!sl)return;
-    if(sensorActief){                     // met headset-sensor: sleep draait de kubus
-      kubusYaw-=(e.clientX-mx)*.006;
-    }else{                                // zonder sensor: sleep kijkt rond
-      sleepKijk.yaw-=(e.clientX-mx)*.005;
-      sleepKijk.pitch=Math.max(-1.2,Math.min(1.2,sleepKijk.pitch-(e.clientY-my)*.005));
-    }
+    if(Math.abs(e.clientX-mx0)+Math.abs(e.clientY-my0)>4) bewogen=true;
+    draaiKubus(AS_Y,-(e.clientX-mx)*.006);
+    draaiKubus(AS_X,-(e.clientY-my)*.006);
     mx=e.clientX;my=e.clientY;
   });
-  dom.addEventListener("pointerup",()=>{sl=false});
+  dom.addEventListener("pointerup",e=>{
+    sl=false;
+    if(!stereoAan() && !bewogen){          // op een scherm: klik = kiezen
+      const m=new THREE.Vector2((e.clientX/innerWidth)*2-1, -(e.clientY/innerHeight)*2+1);
+      blik.setFromCamera(m,camera);
+      const t=blik.intersectObjects(klikbaar,false).find(h=>h.object.visible);
+      if(t) activeer(t.object);
+    }
+  });
+  dom.addEventListener("wheel",e=>{
+    if(!stereoAan()) dolly=Math.max(-0.25,Math.min(1.35,dolly+e.deltaY*.0012));
+  },{passive:true});
 }
 
 /* =========================================================
@@ -738,87 +771,109 @@ function sleepBediening(){
 const blik=new THREE.Raycaster(), midden=new THREE.Vector2(0,0);
 let gericht=null, sinds=0, geblokkeerd=null;
 const klok=new THREE.Clock();
+const tmpV=new THREE.Vector3(), tmpE=new THREE.Euler(), tmpQ=new THREE.Quaternion(),
+      camPos=new THREE.Vector3();
 
 function lus(){
   const dt=Math.min(klok.getDelta(),.05);
 
   /* kijkrichting */
-  if(sensorActief) camera.quaternion.copy(qToestel).premultiply(qOffset);
+  if(stereoAan() && sensorActief) camera.quaternion.copy(qToestel).premultiply(qOffset);
   else camera.quaternion.setFromEuler(new THREE.Euler(sleepKijk.pitch,sleepKijk.yaw,0,"YXZ"));
 
-  /* naar binnen of buiten glijden */
+  /* naar binnen/buiten glijden (op scherm ook zoomen met het wiel) */
+  camDoel.copy(binnenIn?camBinnen:camBuiten);
+  if(!binnenIn && !stereoAan()) camDoel.z=camBuiten.z-dolly;
   camera.position.lerp(camDoel,.08);
+  camera.getWorldPosition(camPos);
 
-  /* kubus draaien */
-  kubusYaw+=draaiRichting*1.4*dt;
-  kubusGroep.rotation.y=kubusYaw;
+  /* wanden faden i.p.v. openklappen */
+  vlakGroepen.forEach(f=>{
+    f.mat.opacity += (f.doelOpacity-f.mat.opacity)*.15;
+    f.mesh.visible = f.mat.opacity>0.04;
+  });
 
-  /* deksels animeren */
-  vlakGroepen.forEach(f=>{ f.scharnier.rotation.x+=(f.doel-f.scharnier.rotation.x)*.12; });
+  /* zwevende tegelbalk: volgt de kijkrichting, hangt onderaan het beeld */
+  tmpE.setFromQuaternion(camera.quaternion,"YXZ");
+  tmpQ.setFromAxisAngle(AS_Y,tmpE.y);
+  balkGroep.quaternion.copy(tmpQ); balkGroep.rotateX(-0.92);
+  balkGroep.position.copy(camPos).add(tmpV.set(0,-0.42,-0.92).applyQuaternion(tmpQ));
+
+  /* informatiepaneel zwevend buiten de kubus, aan de achterzijde van het gekozen vlak */
+  if(paneel.visible && actief>=0){
+    const n=VLAKKEN[actief].normaal.clone().applyQuaternion(kubusGroep.quaternion).normalize();
+    paneel.position.copy(MIDDEN).addScaledVector(n,-KUB*0.72).add(tmpV.set(0,KUB*0.72,0));
+    paneel.lookAt(camPos);
+  }
 
   /* blik */
   blik.setFromCamera(midden,camera);
-  const t=blik.intersectObjects(klikbaar,false)[0];
+  const t=blik.intersectObjects(klikbaar,false).find(h=>h.object.visible);
   const obj=t?t.object:null;
   const afst=t?Math.max(.5,Math.min(4,t.distance)):1.8;
-  richtring.position.z=voortgangschijf.position.z=-afst;
-  richtring.scale.setScalar(afst);
+  richtring.position.z=voortgangschijf.position.z=-afst; richtring.scale.setScalar(afst);
 
-  /* draaitegels werken zolang je ernaar kijkt (geen wachttijd) */
-  const draaiTegel = obj && (obj.userData.vlak===-3||obj.userData.vlak===-4);
-  draaiRichting = draaiTegel ? (obj.userData.vlak===-3? 1 : -1) : 0;
+  /* pijltegels: op scherm per klik, in Cardboard continu zolang je kijkt */
+  const pijl = obj && asVanTegel(obj.userData.vlak);
+  if(stereoAan() && pijl){ draaiKubus(pijl[0], pijl[1]*1.4*dt); }
 
   if(obj!==gericht){ gericht=obj; sinds=0; if(obj!==geblokkeerd) geblokkeerd=null; }
-  if(draaiTegel){
-    voortgangschijf.scale.setScalar(.001);
-    richtring.material.opacity=.95;                 // volle ring als teken dat 't werkt
-  }else if(gericht && gericht!==geblokkeerd){
-    sinds+=dt;
-    const p=Math.min(1,sinds/DWELL);
-    voortgangschijf.scale.setScalar(Math.max(.001,p*afst));
-    richtring.material.opacity=.75+.25*p;
-    if(p>=1){ activeer(gericht); geblokkeerd=gericht; sinds=0; voortgangschijf.scale.setScalar(.001); }
-  }else{
-    voortgangschijf.scale.setScalar(.001);
-    richtring.material.opacity=.55;
+  if(stereoAan()){
+    if(pijl){
+      voortgangschijf.scale.setScalar(.001); richtring.material.opacity=.95;
+    }else if(gericht && gericht!==geblokkeerd){
+      sinds+=dt; const p=Math.min(1,sinds/DWELL);
+      voortgangschijf.scale.setScalar(Math.max(.001,p*afst));
+      richtring.material.opacity=.75+.25*p;
+      if(p>=1){ activeer(gericht); geblokkeerd=gericht; sinds=0; voortgangschijf.scale.setScalar(.001); }
+    }else{ voortgangschijf.scale.setScalar(.001); richtring.material.opacity=.55; }
   }
 
-  /* stereo: links en rechts apart renderen */
+  /* weergeven: op scherm één beeld, in Cardboard links en rechts apart */
   camera.updateMatrixWorld();
-  stereo.update(camera);
-  const maatV=renderer.getSize(new THREE.Vector2()), h=maatV.y, hw=maatV.x/2;
-  renderer.setScissorTest(true);
-  renderer.setScissor(0,0,hw,h); renderer.setViewport(0,0,hw,h);
-  renderer.render(scene,stereo.cameraL);
-  renderer.setScissor(hw,0,hw,h); renderer.setViewport(hw,0,hw,h);
-  renderer.render(scene,stereo.cameraR);
-  renderer.setScissorTest(false);
+  const maatV=renderer.getSize(tmpV), h=maatV.y, w=maatV.x;
+  if(stereoAan()){
+    stereo.update(camera);
+    const hw=w/2;
+    renderer.setScissorTest(true);
+    renderer.setScissor(0,0,hw,h); renderer.setViewport(0,0,hw,h);
+    renderer.render(scene,stereo.cameraL);
+    renderer.setScissor(hw,0,hw,h); renderer.setViewport(hw,0,hw,h);
+    renderer.render(scene,stereo.cameraR);
+    renderer.setScissorTest(false);
+  }else{
+    renderer.setViewport(0,0,w,h);
+    renderer.render(scene,camera);
+  }
 }
 
 /* =========================================================
    8. Starten
    ========================================================= */
-document.getElementById("knop").addEventListener("click",async()=>{
-  try{
-    if(typeof DeviceOrientationEvent!=="undefined" &&
-       typeof DeviceOrientationEvent.requestPermission==="function"){
-      const r=await DeviceOrientationEvent.requestPermission();
-      if(r!=="granted") document.getElementById("melding").textContent=
-        "Geen toegang tot de sensor — rondkijken met de vinger";
-    }
-  }catch(e){}
-  addEventListener("deviceorientation",opOrientatie,true);
-
+async function starten(gekozenModus){
+  modus=gekozenModus;
+  if(modus==="cardboard"){
+    try{
+      if(typeof DeviceOrientationEvent!=="undefined" &&
+         typeof DeviceOrientationEvent.requestPermission==="function"){
+        const r=await DeviceOrientationEvent.requestPermission();
+        if(r!=="granted") document.getElementById("melding").textContent=
+          "Geen sensortoegang — draai met je vinger, kies met een tik";
+      }
+    }catch(e){}
+    addEventListener("deviceorientation",opOrientatie,true);
+    document.getElementById("naad").classList.remove("verborgen");
+    try{ if(navigator.wakeLock) await navigator.wakeLock.request("screen"); }catch(e){}
+  }
   document.getElementById("start").classList.add("verborgen");
-  document.getElementById("naad").classList.remove("verborgen");
-
-  try{ if(navigator.wakeLock) await navigator.wakeLock.request("screen"); }catch(e){}
 
   bouwScene();
   sleepBediening();
-  setTimeout(centreer,600);
+  if(modus==="cardboard") setTimeout(centreer,600);
   renderer.setAnimationLoop(lus);
-});
+}
+document.getElementById("knop-scherm").addEventListener("click",()=>starten("scherm"));
+document.getElementById("knop-vr").addEventListener("click",()=>starten("cardboard"));
 </script>
 </body>
 </html>
