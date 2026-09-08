@@ -15,7 +15,10 @@
 <!-- v2026 - 2.1:   invoervelden schrijven live weg (wijziging in opt/MW/pess telt direct mee in de
                     eerstvolgende simulatie, ook in Safari), tabel wordt niet meer bij elke toetsaanslag
                     hertekend, kolombreedtes herzien in activiteiten/risico's/resultaten/analyse,
-                    standaardverdeling bovenaan het tabblad activiteiten, automatisch bij import staat uit -->
+                    standaardverdeling bovenaan het tabblad activiteiten, automatisch bij import staat uit,
+                    voorbeelddataset zonder spreiding (opt = MW = pess), risicokoppeling toont de
+                    activiteitomschrijving, CSV-export/-import rond: status "Niet gestart" werd als
+                    "In uitvoering" teruggelezen en scheidingstekens/aanhalingstekens in namen braken de regel -->
 <style>
 /* ==========================================================================
    FKT Gnarly — huisstijlletter van Deg, ingesloten als base64 data-URI.
@@ -494,6 +497,9 @@ h1,h2,h3{color:var(--deg-inkt);}
 /* Werd overal in de opmaak gebruikt maar was nooit gedefinieerd; de smallere
    getalkolommen maken het verschil zichtbaar. */
 .text-center{text-align:center;}
+/* Lege toelichtingsblokken tonen anders een kaal kader — zichtbaar zodra er
+   geen spreiding in de invoer zit. */
+.adv-note:empty,.adv-intro:empty{display:none;}
 .gap-14{display:flex;flex-direction:column;gap:16px;}
 .hidden{display:none;}
 
@@ -514,8 +520,9 @@ h1,h2,h3{color:var(--deg-inkt);}
 .risk-prob,.risk-impact{text-align:center;}
 /* Impactveld half zo breed, activiteitkeuze anderhalf keer zo breed. */
 .risk-table td{overflow:hidden;}
-.risk-table .risk-prob{width:calc(100% - 26px);min-width:0;}
-.risk-table .risk-impact{width:88px;max-width:calc(100% - 22px);min-width:0;}
+.risk-table td.text-center{white-space:nowrap;}
+.risk-table .risk-prob{width:62px;max-width:calc(100% - 22px);min-width:0;}
+.risk-table .risk-impact{width:86px;max-width:calc(100% - 20px);min-width:0;}
 .risk-table .risk-act{width:100%;min-width:0;}
 
 /* --- Activiteitentabel -------------------------------------------------- */
@@ -837,11 +844,11 @@ h1,h2,h3{color:var(--deg-inkt);}
     <table class="risk-table" style="table-layout:fixed;min-width:720px">
       <thead>
         <tr>
-          <th style="width:2.4%"></th><th style="width:5.6%">ID</th>
-          <th style="width:56.0%">Omschrijving</th>
-          <th class="text-center" style="width:8.5%">Kans (%)</th>
-          <th class="text-center" style="width:11.0%">Impact (d)</th>
-          <th style="width:16.5%">Activiteit</th>
+          <th style="width:2.0%"></th><th style="width:4.5%">ID</th>
+          <th style="width:36.2%">Omschrijving</th>
+          <th class="text-center" style="width:8.1%">Kans (%)</th>
+          <th class="text-center" style="width:10.2%">Impact (d)</th>
+          <th style="width:39.0%">Activiteit</th>
         </tr>
       </thead>
       <tbody id="riskBody"></tbody>
@@ -1445,26 +1452,26 @@ const STATUS_LBL={open:'Niet gestart',busy:'In uitvoering',done:'Gereed'};
 function normStatus(a){if(!STATUS_KEYS.has(a.status))a.status='open';return a;}
 function isDone(a){return a&&a.status==='done';}
 const DEFAULT = [
-  {id:"A",name:"Projectinitiatie",opt:2,ml:4,pess:8,deps:[],status:'open'},
-  {id:"B",name:"Stakeholderanalyse",opt:1,ml:2,pess:5,deps:["A"],status:'open'},
-  {id:"C",name:"Scope definitie",opt:3,ml:5,pess:9,deps:["A"],status:'open'},
-  {id:"D",name:"Risicoanalyse",opt:2,ml:4,pess:7,deps:["B","C"],status:'open'},
-  {id:"E",name:"Ontwerp fase 1",opt:5,ml:8,pess:14,deps:["C"],status:'open'},
-  {id:"F",name:"Ontwerp fase 2",opt:4,ml:6,pess:10,deps:["E"],status:'open'},
-  {id:"G",name:"Technische specs",opt:3,ml:5,pess:8,deps:["D","E"],status:'open'},
-  {id:"H",name:"Inkoop materiaal",opt:2,ml:4,pess:9,deps:["G"],status:'open'},
-  {id:"I",name:"Bouw fase 1",opt:8,ml:12,pess:20,deps:["F","H"],status:'open'},
-  {id:"J",name:"Bouw fase 2",opt:6,ml:10,pess:16,deps:["I"],status:'open'},
-  {id:"K",name:"Kwaliteitscontrole",opt:2,ml:3,pess:6,deps:["I"],status:'open'},
-  {id:"L",name:"Integratie",opt:4,ml:7,pess:12,deps:["J","K"],status:'open'},
-  {id:"M",name:"Testfase 1",opt:3,ml:5,pess:10,deps:["L"],status:'open'},
-  {id:"N",name:"Testfase 2",opt:2,ml:4,pess:7,deps:["M"],status:'open'},
-  {id:"O",name:"Bugfixing",opt:3,ml:6,pess:12,deps:["N"],status:'open'},
-  {id:"P",name:"Documentatie",opt:2,ml:4,pess:6,deps:["L"],status:'open'},
-  {id:"Q",name:"Training",opt:2,ml:3,pess:5,deps:["O","P"],status:'open'},
-  {id:"R",name:"Acceptatietest",opt:1,ml:3,pess:6,deps:["Q"],status:'open'},
-  {id:"S",name:"Go-live prep",opt:2,ml:3,pess:5,deps:["R"],status:'open'},
-  {id:"T",name:"Go-live & overdracht",opt:1,ml:2,pess:4,deps:["S"],status:'open'},
+  {id:"A",name:"Projectinitiatie",opt:4,ml:4,pess:4,deps:[],status:'open'},
+  {id:"B",name:"Stakeholderanalyse",opt:2,ml:2,pess:2,deps:["A"],status:'open'},
+  {id:"C",name:"Scope definitie",opt:5,ml:5,pess:5,deps:["A"],status:'open'},
+  {id:"D",name:"Risicoanalyse",opt:4,ml:4,pess:4,deps:["B","C"],status:'open'},
+  {id:"E",name:"Ontwerp fase 1",opt:8,ml:8,pess:8,deps:["C"],status:'open'},
+  {id:"F",name:"Ontwerp fase 2",opt:6,ml:6,pess:6,deps:["E"],status:'open'},
+  {id:"G",name:"Technische specs",opt:5,ml:5,pess:5,deps:["D","E"],status:'open'},
+  {id:"H",name:"Inkoop materiaal",opt:4,ml:4,pess:4,deps:["G"],status:'open'},
+  {id:"I",name:"Bouw fase 1",opt:12,ml:12,pess:12,deps:["F","H"],status:'open'},
+  {id:"J",name:"Bouw fase 2",opt:10,ml:10,pess:10,deps:["I"],status:'open'},
+  {id:"K",name:"Kwaliteitscontrole",opt:3,ml:3,pess:3,deps:["I"],status:'open'},
+  {id:"L",name:"Integratie",opt:7,ml:7,pess:7,deps:["J","K"],status:'open'},
+  {id:"M",name:"Testfase 1",opt:5,ml:5,pess:5,deps:["L"],status:'open'},
+  {id:"N",name:"Testfase 2",opt:4,ml:4,pess:4,deps:["M"],status:'open'},
+  {id:"O",name:"Bugfixing",opt:6,ml:6,pess:6,deps:["N"],status:'open'},
+  {id:"P",name:"Documentatie",opt:4,ml:4,pess:4,deps:["L"],status:'open'},
+  {id:"Q",name:"Training",opt:3,ml:3,pess:3,deps:["O","P"],status:'open'},
+  {id:"R",name:"Acceptatietest",opt:3,ml:3,pess:3,deps:["Q"],status:'open'},
+  {id:"S",name:"Go-live prep",opt:3,ml:3,pess:3,deps:["R"],status:'open'},
+  {id:"T",name:"Go-live & overdracht",opt:2,ml:2,pess:2,deps:["S"],status:'open'},
 ];
 let activities = JSON.parse(JSON.stringify(DEFAULT));
 let risks = [];
@@ -1916,8 +1923,13 @@ function renderRisicos(){
   empty.style.display=risks.length?'none':'block';
   document.getElementById('riskCount').textContent=`${risks.length} risico${risks.length!==1?"'s":""}`;
   risks.forEach((r,i)=>{
+    // Naast het ID ook de omschrijving tonen: bij twintig activiteiten zegt
+    // "H" weinig, "H — Inkoop materiaal" wel.
     const actOpts=[`<option value="">— project —</option>`]
-      .concat(activities.map(a=>`<option value="${esc(a.id)}"${a.id===r.actId?'selected':''}>${esc(a.id)}</option>`))
+      .concat(activities.map(a=>{
+        const lbl=a.name?`${a.id} — ${a.name}`:a.id;
+        return `<option value="${esc(a.id)}"${a.id===r.actId?'selected':''}>${esc(lbl)}</option>`;
+      }))
       .join('');
     const tr=document.createElement('tr');
     tr.innerHTML=`
@@ -1998,11 +2010,15 @@ function parseRiskPaste(append){
   if(!lines.length){show('Geen data gevonden om te importeren.');return;}
 
   const delim=detectDelimiter(lines[0]);
-  const clean=v=>String(v==null?'':v).replace(/^"|"$/g,'').trim();
+  const clean=s=>{ // splitCSVLine haalt de omhullende quotes er al af; alleen een
+                   // restant van een niet-CSV-bron nog wegnemen, en nooit een los
+                   // aanhalingsteken midden in de tekst.
+    const t=String(s==null?'':s).trim();
+    return (t.length>1&&t[0]==='"'&&t[t.length-1]==='"')?t.slice(1,-1).trim():t;};
   const ids=new Set(activities.map(a=>a.id));
   const parsed=[],onbekend=new Set();
   for(let i=0;i<lines.length;i++){
-    const cols=lines[i].split(delim).map(clean);
+    const cols=splitCSVLine(lines[i],delim).map(clean);
     if(cols.length<3)continue;
     // Kopregel overslaan
     if(i===0&&isNaN(num(cols[2]))&&/^(id|risico|omschrijving|kans|nr)/i.test(cols[0]||cols[1]||''))continue;
@@ -2165,6 +2181,33 @@ function detectDelimiter(line){
   if(s>=c)return/;/;
   return/,/;
 }
+/* Splitst één regel op het scheidingsteken maar respecteert aanhalingstekens,
+   zodat een activiteitnaam of deps-lijst waar het scheidingsteken zelf in staat
+   ("Bouw, fase 1" of "B;C") heel blijft. Een verdubbeld aanhalingsteken binnen
+   een veld telt als één letterlijk teken, conform CSV. */
+function splitCSVLine(line,delim){
+  const d=delim.source==='\\t'?'\t':delim.source;
+  const out=[];let cur='',q=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;continue;}
+    if(!q&&ch===d){out.push(cur);cur='';continue;}
+    cur+=ch;
+  }
+  out.push(cur);
+  return out;
+}
+/* Statuskolom uit een eigen export of een externe lijst terugvertalen.
+   "Niet gestart" moet vóór de busy-test worden afgevangen: die tekst bevat
+   het woord "gestart" en werd anders als "In uitvoering" ingelezen. */
+function parseStatus(raw){
+  const s=String(raw==null?'':raw).trim();
+  if(!s)return 'open';
+  if(/niet\s*gestart|nog\s*niet|not\s*started|^open$|^0%?$/i.test(s))return 'open';
+  if(/gereed|complete|klaar|afgerond|done|100/i.test(s))return 'done';
+  if(/uitvoer|progress|active|busy|bezig|gestart|lopend/i.test(s))return 'busy';
+  return 'open';
+}
 function parsePaste(){
   const errEl=document.getElementById('pasteError');
   errEl.classList.add('hidden');
@@ -2181,8 +2224,12 @@ function parsePaste(){
   const delim=detectDelimiter(lines[0]);
   // Kopregel herkennen en kolommen op naam mappen; dat maakt een eigen export
   // (met ES/EF-kolommen tussen Pess en Deps) weer correct inleesbaar.
-  const clean=s=>s.replace(/^"|"$/g,'').trim();
-  const hdrCols=lines[0].split(delim).map(clean);
+  const clean=s=>{ // splitCSVLine haalt de omhullende quotes er al af; alleen een
+                   // restant van een niet-CSV-bron nog wegnemen, en nooit een los
+                   // aanhalingsteken midden in de tekst.
+    const t=String(s==null?'':s).trim();
+    return (t.length>1&&t[0]==='"'&&t[t.length-1]==='"')?t.slice(1,-1).trim():t;};
+  const hdrCols=splitCSVLine(lines[0],delim).map(clean);
   const hdrLike=hdrCols.some(c=>/^(id|activiteit|naam)$/i.test(c))&&
                 hdrCols.some(c=>/^(opt|optimistisch|mw|duur|duration)/i.test(c));
   let M=null;
@@ -2201,7 +2248,7 @@ function parsePaste(){
   for(let i=0;i<lines.length;i++){
     // Samenvattings-/risicoregels van een CSV-export overslaan
     if(/^(Projectduur|PERT Deterministisch|Iteraties;|Gemiddeld;|Bereik;|Startdatum;|Risico-ID|P\d+ einddatum)/i.test(lines[i].trim()))continue;
-    const cols=lines[i].split(delim).map(clean);
+    const cols=splitCSVLine(lines[i],delim).map(clean);
     // Kopregel alleen overslaan als de getalkolommen ook werkelijk geen getallen
     // bevatten. Anders verdwijnt een activiteit die toevallig "Activiteit 1" heet.
     if(i===0&&cols.some(c=>/^(id|activiteit|naam|opt|pess|deps|duur|status)/i.test(c))
@@ -2232,8 +2279,7 @@ function parsePaste(){
       }
     }
     if(o>m||m>p){show(`Regel ${i+1}: Opt \u2264 MW \u2264 Pess vereist.`);return;}
-    const status=/gereed|complete|done|100/i.test(stRaw)?'done'
-                :/uitvoer|progress|active|busy|gestart/i.test(stRaw)?'busy':'open';
+    const status=parseStatus(stRaw);
     parsed.push({id,name,opt:o,ml:m,pess:p,status,
       deps:dS?dS.split(',').map(s=>clean(s)).filter(Boolean):[]});
   }
@@ -2431,15 +2477,18 @@ function exportCSV(){
   const pertDet=calcMLDeterministic();
   const projDur=pctl(simResult.results,pVal);
   const d=simResult.results;
+  // Tekstveld als CSV-cel: aanhalingstekens verdubbelen, zodat een naam met een
+  // " erin bij het opnieuw inlezen niet halverwege afbreekt.
+  const q=v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`;
   const hdr=['ID','Activiteit','Opt','MW','Pess','Status','ES','EF',`Duur P${pVal}`,'Kritikaliteit %','Deps'];
   const lines=[hdr.join(';')];
   activities.forEach(a=>{
     const done=isDone(a);
     const ci=(simResult.cpCount[a.id]||0)/iters*100;
     const durP=pctl(simResult.actDurations[a.id],pVal);
-    lines.push([a.id,`"${a.name}"`,a.opt,a.ml,a.pess,STATUS_LBL[a.status]||'Niet gestart',
+    lines.push([a.id,q(a.name),a.opt,a.ml,a.pess,STATUS_LBL[a.status]||'Niet gestart',
       (pert.esMap[a.id]||0).toFixed(1),(pert.efMap[a.id]||0).toFixed(1),
-      durP.toFixed(1),done?'n.v.t.':ci.toFixed(1),`"${a.deps.join(',')}"`].join(';'));
+      durP.toFixed(1),done?'n.v.t.':ci.toFixed(1),q(a.deps.join(','))].join(';'));
   });
   lines.push('',
     `Projectduur P15;${pctl(d,15).toFixed(1)} werkdagen`,
@@ -2450,7 +2499,7 @@ function exportCSV(){
     `Iteraties;${iters}`);
   if(risks.length){
     lines.push('','Risico-ID;Omschrijving;Kans %;Impact (d);Activiteit');
-    risks.forEach(r=>lines.push(`${r.id};"${r.name}";${r.prob};${r.impact};${r.actId||'project'}`));
+    risks.forEach(r=>lines.push(`${r.id};${q(r.name)};${r.prob};${r.impact};${r.actId||'project'}`));
   }
   const sd=document.getElementById('startDate').value;
   if(sd){
